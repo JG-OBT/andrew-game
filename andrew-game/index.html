@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noughts & Crosses</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── TOKENS ─────────────────────────────────────────────── */
+    :root {
+      --bg:        #0d0d0d;
+      --surface:   #161616;
+      --line:      #2a2a2a;
+      --accent:    #c8f135;
+      --accent2:   #ff5e5b;
+      --text:      #f0f0f0;
+      --muted:     #555;
+      --cell-size: min(26vw, 160px);
+      --gap:       6px;
+      --radius:    12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding: 24px;
+      overflow: hidden;
+    }
+
+    /* ── BACKGROUND GRID ────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 48px 48px;
+      opacity: .35;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────── */
+    header {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+    header h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2.6rem, 8vw, 5rem);
+      letter-spacing: .08em;
+      line-height: 1;
+      color: var(--accent);
+      text-shadow: 0 0 40px rgba(200,241,53,.25);
+    }
+    header p {
+      font-size: .72rem;
+      color: var(--muted);
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      margin-top: 6px;
+    }
+
+    /* ── STATUS BAR ─────────────────────────────────────────── */
+    #status {
+      position: relative;
+      z-index: 1;
+      font-size: .8rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      height: 20px;
+      transition: color .3s;
+    }
+    #status.your-turn  { color: var(--accent); }
+    #status.cpu-turn   { color: var(--accent2); }
+    #status.game-over  { color: var(--text); }
+
+    /* ── BOARD ──────────────────────────────────────────────── */
+    #board {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, var(--cell-size));
+      grid-template-rows:    repeat(3, var(--cell-size));
+      gap: var(--gap);
+      background: var(--line);
+      border: 2px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      padding: var(--gap);
+      box-shadow: 0 0 60px rgba(0,0,0,.6), 0 0 0 1px #222;
+    }
+
+    /* ── CELL ───────────────────────────────────────────────── */
+    .cell {
+      background: var(--surface);
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      transition: background .15s, transform .1s;
+    }
+    .cell:hover:not(.taken) {
+      background: #1e1e1e;
+      transform: scale(1.03);
+    }
+    .cell.taken { cursor: default; }
+
+    /* hover ghost */
+    .cell:not(.taken)::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(200,241,53,.06) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .cell:not(.taken):hover::after { opacity: 1; }
+
+    /* token image */
+    .cell img {
+      width: 68%;
+      height: 68%;
+      object-fit: contain;
+      position: relative;
+      z-index: 1;
+      animation: popIn .25s cubic-bezier(.175,.885,.32,1.275) both;
+    }
+    @keyframes popIn {
+      from { transform: scale(0) rotate(-12deg); opacity: 0; }
+      to   { transform: scale(1) rotate(0deg);  opacity: 1; }
+    }
+
+    /* win highlight */
+    .cell.win-cell {
+      background: #1a1f0a;
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    .cell.win-cell img { filter: drop-shadow(0 0 8px var(--accent)); }
+
+    .cell.lose-cell {
+      background: #1f0d0d;
+      box-shadow: inset 0 0 0 2px var(--accent2);
+    }
+    .cell.lose-cell img { filter: drop-shadow(0 0 8px var(--accent2)); }
+
+    /* ── RESULT OVERLAY ─────────────────────────────────────── */
+    #result-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      background: rgba(13,13,13,.88);
+      backdrop-filter: blur(6px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .4s;
+    }
+    #result-overlay.show {
+      opacity: 1;
+      pointer-events: all;
+    }
+    #result-overlay h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(3rem, 12vw, 7rem);
+      letter-spacing: .06em;
+      line-height: 1;
+    }
+    #result-overlay h2.win  { color: var(--accent);  text-shadow: 0 0 60px rgba(200,241,53,.4); }
+    #result-overlay h2.lose { color: var(--accent2); text-shadow: 0 0 60px rgba(255,94,91,.4); }
+    #result-overlay h2.draw { color: var(--text); }
+
+    #result-overlay p {
+      font-size: .75rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    #play-again {
+      margin-top: 8px;
+      background: transparent;
+      border: 1.5px solid var(--accent);
+      color: var(--accent);
+      font-family: 'DM Mono', monospace;
+      font-size: .8rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      padding: 12px 32px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background .2s, color .2s;
+    }
+    #play-again:hover {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    /* ── FOOTER ─────────────────────────────────────────────── */
+    footer {
+      position: relative;
+      z-index: 1;
+      font-size: .65rem;
+      color: var(--muted);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Noughts &amp; Crosses</h1>
+    <p>Human vs. Machine · Best of nothing</p>
+  </header>
+
+  <div id="status" class="your-turn">Your turn</div>
+
+  <div id="board" role="grid" aria-label="Noughts and Crosses board">
+    <!-- 9 cells injected by JS -->
+  </div>
+
+  <div id="result-overlay" role="dialog" aria-live="assertive">
+    <h2 id="result-text"></h2>
+    <p id="result-sub"></p>
+    <button id="play-again">Play again</button>
+  </div>
+
+  <footer>Place your token · CPU plays after a short delay</footer>
+
+  <script>
+    // ─────────────────────────────────────────────────────────────
+    //  CONFIGURATION — swap these paths for your own assets
+    // ─────────────────────────────────────────────────────────────
+    const ASSETS = {
+      playerImage : 'assets/images/player-token.png',   // your token image
+      cpuImage    : 'assets/images/cpu-token.png',       // CPU token image
+      playerSound : 'assets/sounds/player-move.mp3',    // your move sound
+      cpuSound    : 'assets/sounds/cpu-move.mp3',        // CPU move sound
+    };
+
+    const CPU_DELAY_MS = 900; // ms before CPU plays
+
+    // ─────────────────────────────────────────────────────────────
+    //  STATE
+    // ─────────────────────────────────────────────────────────────
+    const WIN_LINES = [
+      [0,1,2],[3,4,5],[6,7,8], // rows
+      [0,3,6],[1,4,7],[2,5,8], // cols
+      [0,4,8],[2,4,6],          // diags
+    ];
+
+    let board, playerTurn, gameActive;
+
+    // ─────────────────────────────────────────────────────────────
+    //  DOM REFS
+    // ─────────────────────────────────────────────────────────────
+    const boardEl     = document.getElementById('board');
+    const statusEl    = document.getElementById('status');
+    const overlayEl   = document.getElementById('result-overlay');
+    const resultText  = document.getElementById('result-text');
+    const resultSub   = document.getElementById('result-sub');
+    const playAgainBtn= document.getElementById('play-again');
+
+    // ─────────────────────────────────────────────────────────────
+    //  AUDIO — preload both clips
+    // ─────────────────────────────────────────────────────────────
+    function makeAudio(src) {
+      const a = new Audio(src);
+      a.preload = 'auto';
+      return a;
+    }
+    const playerAudio = makeAudio(ASSETS.playerSound);
+    const cpuAudio    = makeAudio(ASSETS.cpuSound);
+
+    function playSound(audio) {
+      try {
+        audio.currentTime = 0;
+        audio.play().catch(() => {}); // ignore autoplay policy errors silently
+      } catch(_) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  INIT
+    // ─────────────────────────────────────────────────────────────
+    function init() {
+      board      = Array(9).fill(null); // null | 'P' | 'C'
+      playerTurn = true;
+      gameActive = true;
+
+      boardEl.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.index = i;
+        cell.setAttribute('role', 'gridcell');
+        cell.setAttribute('aria-label', `Cell ${i + 1}`);
+        cell.addEventListener('click', onCellClick);
+        boardEl.appendChild(cell);
+      }
+
+      setStatus('your-turn', 'Your turn');
+      overlayEl.classList.remove('show');
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  PLAYER MOVE
+    // ─────────────────────────────────────────────────────────────
+    function onCellClick(e) {
+      const idx = +e.currentTarget.dataset.index;
+      if (!gameActive || !playerTurn || board[idx]) return;
+
+      place(idx, 'P');
+      playSound(playerAudio);
+
+      const result = checkResult();
+      if (result) { endGame(result); return; }
+
+      playerTurn = false;
+      setStatus('cpu-turn', 'CPU thinking…');
+      setTimeout(cpuMove, CPU_DELAY_MS);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  CPU MOVE — minimax (perfect play)
+    // ─────────────────────────────────────────────────────────────
+    function cpuMove() {
+      if (!gameActive) return;
+
+      const idx = bestMove(board);
+      place(idx, 'C');
+      playSound(cpuAudio);
+
+      const result = checkResult();
+      if (result) { endGame(result); return; }
+
+      playerTurn = true;
+      setStatus('your-turn', 'Your turn');
+    }
+
+    function bestMove(b) {
+      let best = -Infinity, move = -1;
+      for (let i = 0; i < 9; i++) {
+        if (b[i]) continue;
+        b[i] = 'C';
+        const score = minimax(b, 0, false);
+        b[i] = null;
+        if (score > best) { best = score; move = i; }
+      }
+      return move;
+    }
+
+    function minimax(b, depth, isMax) {
+      const w = winner(b);
+      if (w === 'C') return 10 - depth;
+      if (w === 'P') return depth - 10;
+      if (b.every(Boolean)) return 0;
+
+      if (isMax) {
+        let best = -Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (b[i]) continue;
+          b[i] = 'C';
+          best = Math.max(best, minimax(b, depth + 1, false));
+          b[i] = null;
+        }
+        return best;
+      } else {
+        let best = Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (b[i]) continue;
+          b[i] = 'P';
+          best = Math.min(best, minimax(b, depth + 1, true));
+          b[i] = null;
+        }
+        return best;
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  HELPERS
+    // ─────────────────────────────────────────────────────────────
+    function place(idx, who) {
+      board[idx] = who;
+      const cell = boardEl.children[idx];
+      cell.classList.add('taken');
+      const img = document.createElement('img');
+      img.src = who === 'P' ? ASSETS.playerImage : ASSETS.cpuImage;
+      img.alt = who === 'P' ? 'Your token' : 'CPU token';
+      cell.appendChild(img);
+    }
+
+    function winner(b) {
+      for (const [a,c,d] of WIN_LINES) {
+        if (b[a] && b[a] === b[c] && b[c] === b[d]) return b[a];
+      }
+      return null;
+    }
+
+    function checkResult() {
+      const w = winner(board);
+      if (w) return { type: 'win', who: w };
+      if (board.every(Boolean)) return { type: 'draw' };
+      return null;
+    }
+
+    function endGame(result) {
+      gameActive = false;
+      setStatus('game-over', '');
+
+      if (result.type === 'win') {
+        const winLine = WIN_LINES.find(([a,b,c]) =>
+          board[a] && board[a] === board[b] && board[b] === board[c]
+        );
+        winLine.forEach(i => {
+          boardEl.children[i].classList.add(result.who === 'P' ? 'win-cell' : 'lose-cell');
+        });
+
+        if (result.who === 'P') {
+          resultText.textContent = 'You Win!';
+          resultText.className = 'win';
+          resultSub.textContent = 'The machine bows to you… this time.';
+        } else {
+          resultText.textContent = 'You Lose';
+          resultText.className = 'lose';
+          resultSub.textContent = 'Perfect play. The machine never errs.';
+        }
+      } else {
+        resultText.textContent = 'Draw';
+        resultText.className = 'draw';
+        resultSub.textContent = 'Equal minds. Equal outcome.';
+      }
+
+      setTimeout(() => overlayEl.classList.add('show'), 600);
+    }
+
+    function setStatus(cls, text) {
+      statusEl.className = cls;
+      statusEl.textContent = text;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  EVENTS
+    // ─────────────────────────────────────────────────────────────
+    playAgainBtn.addEventListener('click', init);
+
+    // ─────────────────────────────────────────────────────────────
+    //  BOOT
+    // ─────────────────────────────────────────────────────────────
+    init();
+  </script>
+</body>
+</html>
