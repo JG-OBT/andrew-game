@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "andrew-game",
+  "compatibility_date": "2026-05-04",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "andrew-game"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
